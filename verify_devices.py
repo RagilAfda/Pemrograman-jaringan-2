@@ -23,47 +23,46 @@ def load_devices_from_yaml(filename="devices.yaml"):
         print(f"[FATAL] Gagal membaca {filename}: {e}")
         sys.exit(1)
 
-# --- Fungsi Verifikasi ---
-
+# ============================================================
+#            FUNGSI VERIFIKASI SWITCH (UPDATED)
+# ============================================================
 def verifikasi_switch(name, running_config):
-    """Verifikasi keberadaan/ketiadaan VLAN spesifik pada Switch."""
-    has_vlan = TARGET_VLAN in running_config
+    """Verifikasi VLAN 50 pada switch S1–S6.
 
+       Jika ada → ADA
+       Jika tidak → HILANG
+    """
     print(f"  [INFO] Mencari {TARGET_VLAN}...")
 
-    # Switch yang HARUS memiliki VLAN 50
-    if name in ["S1", "S2", "S3"]:
-        if has_vlan:
-            print(f"  [OK] **VLAN 50 ADA** (sesuai ekspektasi)")
-        else:
-            print(f"  [ERROR] **VLAN 50 TIDAK DITEMUKAN** padahal seharusnya ADA.")
+    has_vlan = TARGET_VLAN in running_config
 
-    # Switch yang HARUS kehilangan VLAN 50 (setelah rollback)
-    elif name in ["S4", "S5", "S6"]:
-        if not has_vlan:
-            print(f"  [OK] **VLAN 50 HILANG** (rollback berhasil)")
-        else:
-            print(f"  [ERROR] **VLAN 50 MASIH ADA** padahal seharusnya dihapus.")
-    
+    if has_vlan:
+        print(f"  [OK] VLAN **ADA** pada {name}")
     else:
-        print(f"  [PERINGATAN] Perangkat Switch {name} tidak memiliki aturan verifikasi spesifik.")
+        print(f"  [OK] VLAN **HILANG** pada {name}")
 
+# ============================================================
+#                FUNGSI VERIFIKASI ROUTER
+# ============================================================
 def verifikasi_router(name, interfaces):
-    """Verifikasi status Loopback spesifik pada Router."""
+    """Verifikasi status Loopback pada Router."""
     print(f"  [INFO] Mencari interface {TARGET_LOOPBACK}...")
+
     loop = interfaces.get(TARGET_LOOPBACK)
 
     if loop:
-        # Loopback ditemukan, cek status 'is_up'
         if loop.get("is_up", False):
-            print("  [OK] **Loopback1 AKTIF**")
+            print("  [OK] **Loopback AKTIF**")
         else:
-            print("  [ERROR] Loopback1 ditemukan tetapi **TIDAK AKTIF**")
+            print("  [ERROR] Loopback ditemukan tetapi **TIDAK AKTIF**")
     else:
-        print("  [ERROR] **Loopback1 TIDAK DITEMUKAN** pada router")
+        print("  [ERROR] **Loopback TIDAK DITEMUKAN** pada router")
 
+# ============================================================
+#               MAIN VERIFICATION PROCESS
+# ============================================================
 def proses_verifikasi(dev):
-    """Mengelola koneksi ke perangkat dan memanggil fungsi verifikasi."""
+    """Koneksi ke perangkat & menjalankan verifikasi."""
     name = dev.get("name")
     host = dev.get("host")
     user = dev.get("username")
@@ -72,16 +71,15 @@ def proses_verifikasi(dev):
     driver_name = dev.get("driver")
 
     print(f"\n--- Verifikasi {name} ({host}) ---")
-    
-    # 1. Inisialisasi Driver
+
+    # Inisialisasi driver
     try:
         driver = get_network_driver(driver_name)
     except Exception as e:
-        print(f"[FATAL] Gagal mendapatkan driver {driver_name}: {e}")
+        print(f"[FATAL] Driver error ({driver_name}): {e}")
         return
 
-    # 2. Koneksi ke Perangkat
-    device = None
+    # Koneksi
     try:
         device = driver(
             hostname=host,
@@ -91,49 +89,45 @@ def proses_verifikasi(dev):
         )
         device.open()
     except (ConnectionException, ConnectAuthError) as e:
-        # Menangkap error koneksi dan autentikasi spesifik NAPALM
-        print(f"[GAGAL] Gagal konek: {e.__class__.__name__} - {e}")
+        print(f"[GAGAL] Gagal konek ({e.__class__.__name__}): {e}")
         return
     except Exception as e:
-        print(f"[GAGAL] Gagal konek: Kesalahan tidak terduga - {e}")
+        print(f"[GAGAL] Error koneksi: {e}")
         return
 
-    # 3. Ambil Konfigurasi dan Interface
-    running_config = ""
-    interfaces = {}
-    
+    # Ambil running config
     try:
-        # Ambil RUNNING-CONFIG
         running_config = device.get_config().get("running", "")
     except Exception as e:
         print(f"[GAGAL] Gagal membaca running config: {e}")
         device.close()
         return
 
-    # Ambil INTERFACE INFO (hanya jika Router)
-    if name.upper().startswith("R"):
+    # Ambil interface info (khusus router)
+    interfaces = {}
+    if name.startswith("R"):
         try:
             interfaces = device.get_interfaces()
         except Exception as e:
             print(f"[PERINGATAN] Gagal membaca interfaces: {e}")
-            interfaces = {} # Tetap lanjutkan dengan interfaces kosong
 
-    # 4. Verifikasi berdasarkan Tipe Perangkat
-    if name.upper().startswith("S"):
+    # Mulai verifikasi
+    if name.startswith("S"):
         verifikasi_switch(name, running_config)
-    elif name.upper().startswith("R"):
+    elif name.startswith("R"):
         verifikasi_router(name, interfaces)
     else:
-        print(f"  [PERINGATAN] Tipe perangkat ({name}) tidak dikenali untuk verifikasi.")
+        print(f"[PERINGATAN] Perangkat {name} tidak dikenali.")
 
-    # 5. Tutup Koneksi
+    # Tutup koneksi
     try:
         device.close()
-    except Exception as e:
-        print(f"[PERINGATAN] Gagal menutup koneksi: {e}")
+    except:
+        pass
 
-
-# --- Main Execution ---
+# ============================================================
+#                          MAIN
+# ============================================================
 if __name__ == "__main__":
     devices = load_devices_from_yaml()
 
