@@ -1,0 +1,27 @@
+---
+- name: Jalankan perintah show version dan ambil facts perangkat
+  hosts: switches
+  gather_facts: no
+  
+  tasks:
+    - name: Tampilkan version
+      cisco.ios.ios_command:
+        commands:
+          - show version
+      register: hasil_version
+      
+    - name: Tampilkan hasil show version di console
+      ansible.builtin.debug:
+        var: hasil_version.stdout_lines
+
+    - name: Mengambil network facts (interface, hostname, dll.)
+      cisco.ios.ios_facts:
+        gather_subset:
+          - all
+      register: device_facts
+
+    - name: Simpan facts ke file JSON terpisah
+      ansible.builtin.copy:
+        content: "{{ device_facts | to_nice_json }}"
+        dest: "facts_{{ inventory_hostname }}.json"
+      delegate_to: localhost
