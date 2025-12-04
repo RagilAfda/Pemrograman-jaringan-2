@@ -1,0 +1,15 @@
+---
+- name: Jalankan perintah show version di switches
+  hosts: switches
+  gather_facts: no
+  
+  tasks:
+    - name: Tampilkan version
+      cisco.ios.ios_command:
+        commands:
+          - show version
+      register: hasil_version
+      
+    - name: Tampilkan hasil di console
+      ansible.builtin.debug:
+        var: hasil_version.stdout_lines
